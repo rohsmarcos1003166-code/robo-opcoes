@@ -1,0 +1,23 @@
+name: Execucao_Diaria_Opcoes
+
+on:
+  schedule:
+    # Vai rodar de segunda a sexta às 18:15 (horário de Brasília)
+    - cron: '15 21 * * 1-5'
+  workflow_dispatch: # Isso permite que você aperte um botão para testar agora
+
+jobs:
+  run_script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Instalar bibliotecas
+        run: pip install -r requirements.txt
+      - name: Rodar o Robo
+        env:
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python script.py
