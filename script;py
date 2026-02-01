@@ -1,45 +1,24 @@
-import yfinance as yf
-import pandas as pd
-import smtplib
-import os
-from email.message import EmailMessage
+name: Execucao_Diaria_Opcoes
 
-def enviar_relatorio():
-    # Pega a senha do cofre do GitHub
-    SUA_SENHA_APP = os.environ.get("EMAIL_PASSWORD")
-    EMAIL_USER = "rohsmarcos1003166@gmail.com"
-    
-    # Ações que o robô vai vigiar
-    tickers = ['PETR4.SA', 'VALE3.SA', 'BOVA11.SA', 'ITUB4.SA']
-    lista_opcoes = []
-    
-    for t in tickers:
-        ativo = yf.Ticker(t)
-        if ativo.options:
-            # Pega a grade de opções mais próxima
-            grade = ativo.option_chain(ativo.options[0])
-            df = pd.concat([grade.calls, grade.puts])
-            lista_opcoes.append(df[['contractSymbol', 'volume', 'lastPrice']])
-    
-    msg = EmailMessage()
-    if lista_opcoes:
-        # Encontra a opção mais negociada do dia
-        campea = pd.concat(lista_opcoes).sort_values(by='volume', ascending=False).iloc[0]
-        t_nome, vol, preco = campea['contractSymbol'], int(campea['volume']), campea['lastPrice']
-        
-        msg['Subject'] = f"🚀 Opção Líder: {t_nome}"
-        msg.set_content(f"Relatório do Robô:\n\nTicker: {t_nome}\nVolume: {vol}\nPreço: R$ {preco:.2f}")
-    else:
-        msg['Subject'] = "Mercado Fechado"
-        msg.set_content("Não houve negociações hoje.")
+on:
+  workflow_dispatch:
 
-    msg['From'] = EMAIL_USER
-    msg['To'] = EMAIL_USER
-    
-    # Envia o e-mail usando a senha secreta
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(EMAIL_USER, SUA_SENHA_APP)
-        smtp.send_message(msg)
+jobs:
+  run_script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-if __name__ == "__main__":
-    enviar_relatorio()
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install libraries
+        run: pip install yfinance pandas
+
+      - name: Run Robot
+        env:
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python script.py
