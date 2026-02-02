@@ -1,82 +1,65 @@
-import yfinance as yf
-import smtplib
-import os
+import yfinance as ticker
 import pandas as pd
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import smtplib
+from email.message import EmailMessage
 
-def buscar_dados_com_fallback():
-    meu_email = "rohsmarcos1003166@gmail.com"
-    senha = os.getenv("EMAIL_PASSWORD")
-    ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
-    todas_opcoes = []
-    
+# --- CONFIGURAÇÃO ---
+ATIVOS = ['PETR4.SA', 'VALE3.SA', 'BBDC4.SA', 'ITUB4.SA']
+MEU_EMAIL = "seu-email@gmail.com"
+MINHA_SENHA = "sua-senha-de-app" # Aquela de 16 dígitos do Google
+
+def coletar_dados():
+    relatorio = "Relatório de Opções - Consolidado\n\n"
+    encontrou_dados = False
+
+    for acao in ATIVOS:
+        try:
+            print(f"Coletando dados de {acao}...")
+            obj = ticker.Ticker(acao)
+            vencimentos = obj.options
+            
+            if not vencimentos:
+                continue
+
+            # Pega o primeiro vencimento disponível
+            opcoes = obj.option_chain(vencimentos[0])
+            todas = pd.concat([opcoes.calls, codecs.puts])
+
+            # AJUSTE DA LINHA 27-31: Filtro mais flexível (Preço > 0)
+            # Aceita dados mesmo que o volume oficial ainda não tenha caído no sistema
+            ativas = todas[todas['lastPrice'] > 0.01].copy()
+
+            if not ativas.empty:
+                encontrou_dados = True
+                relatorio += f"\n--- {acao} (Vencimento: {vencimentos[0]}) ---\n"
+                # Pega as 5 mais negociadas ou com maior preço
+                top5 = ativas.sort_values(by='lastPrice', ascending=False).head(5)
+                for i, row in top5.iterrows():
+                    relatorio += f"Opção: {row['contractSymbol']} | Preço: R$ {row['lastPrice']:.2f}\n"
+
+        except Exception as e:
+            print(f"Erro ao processar {acao}: {e}")
+            continue
+
+    if encontrou_dados:
+        enviar_email(relatorio)
+    else:
+        enviar_email("O mercado não gerou dados processáveis para os filtros atuais.")
+
+def enviar_email(conteudo):
+    msg = EmailMessage()
+    msg.set_content(conteudo)
+    msg['Subject'] = "Relatório de Opções B3"
+    msg['From'] = MEU_EMAIL
+    msg['To'] = MEU_EMAIL
+
     try:
-        for t in ativos:
-            ticker = yf.Ticker(f"{t}.SA")
-            vencimentos = ticker.options
-            
-            if vencimentos:
-                prox = vencimentos[0]
-                chain = ticker.option_chain(prox)
-                
-                # Une Calls e Puts
-                calls, puts = chain.calls, chain.puts
-                calls['Tipo'], puts['Tipo'] = 'CALL (Compra)', 'PUT (Venda)'
-                todas = pd.concat([calls, puts])
-                
-                # Filtra apenas quem teve negociação (Volume > 0)
-                # O yfinance mantém os dados do último pregão se o mercado estiver fechado
-                ativas = todas[todas['volume'] > 0].copy()
-                
-                for _, linha in ativas.iterrows():
-                    todas_opcoes.append({
-                        'Ativo': t,
-                        'Simbolo': linha['contractSymbol'],
-                        'Tipo': linha['Tipo'],
-                        'Var': linha['percentChange'],
-                        'Preco': linha['lastPrice'],
-                        'Vol': linha['volume']
-                    })
-
-        if todas_opcoes:
-            df = pd.DataFrame(todas_opcoes)
-            
-            # 1. Ranking de Valorização (Top 5)
-            top5_alta = df.sort_values(by='Var', ascending=False).head(5)
-            
-            # 2. A Mais Negociada do Dia (Maior Volume)
-            mais_negociada = df.sort_values(by='Vol', ascending=False).iloc[0]
-
-            relatorio = "📊 RELATÓRIO DO ÚLTIMO PREGÃO (Sexta-feira/Hoje)\n"
-            relatorio += "="*45 + "\n\n"
-            relatorio += "💎 A OPÇÃO MAIS NEGOCIADA:\n"
-            relatorio += f"Ativo: {mais_negociada['Ativo']} | Símbolo: {mais_negociada['Simbolo']}\n"
-            relatorio += f"Tipo: {mais_negociada['Tipo']}\n"
-            relatorio += f"Volume: {int(mais_negociada['Vol']):,} contratos\n"
-            relatorio += f"Fechamento: R$ {mais_negociada['Preco']:.2f} ({mais_negociada['Var']:+.2f}%)\n"
-            relatorio += "\n" + "-"*45 + "\n\n"
-            
-            relatorio += "🚀 TOP 5 MAIORES ALTAS:\n"
-            for i, (index, row) in enumerate(top5_alta.iterrows(), 1):
-                relatorio += f"{i}º {row['Simbolo']} ({row['Ativo']}): +{row['Var']:.2f}% | R$ {row['Preco']:.2f}\n"
-        else:
-            relatorio = "Erro: Não foram encontrados dados de negociação recentes."
-
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(MEU_EMAIL, MINHA_SENHA)
+            smtp.send_message(msg)
+        print("E-mail enviado com sucesso!")
     except Exception as e:
-        relatorio = f"Erro no processamento: {str(e)}"
-
-    # Configuração do E-mail
-    msg = MIMEMultipart()
-    msg['Subject'] = "📈 Resultado Opções: Mais Negociada + Top 5"
-    msg['From'] = meu_email
-    msg['To'] = meu_email
-    msg.attach(MIMEText(relatorio, 'plain'))
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(meu_email, senha)
-        server.send_message(msg)
-    print("E-mail enviado!")
+        print(f"Falha ao enviar e-mail: {e}")
 
 if __name__ == "__main__":
-    buscar_dados_com_fallback()
+    coletar_dados()
