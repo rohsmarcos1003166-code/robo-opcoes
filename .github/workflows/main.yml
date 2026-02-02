@@ -1,7 +1,7 @@
 name: Execucao_Diaria_Opcoes
 
 on:
-  workflow_dispatch: # Permite que você clique no botão para rodar agora
+  workflow_dispatch:
   schedule:
     - cron: '0 22 * * *' # Roda às 19:00 Horário de Brasília
 
