@@ -3,7 +3,7 @@ import pandas as pd
 import smtplib
 import os
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def executar_robo():
     try:
@@ -11,41 +11,34 @@ def executar_robo():
         senha_app = os.getenv("EMAIL_PASSWORD")
         
         ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4", "MGLU3"]
-        relatorio = f"📊 OPÇÕES - VENCIMENTOS MENSAIS\n" + "="*40 + "\n"
+        relatorio = f"📊 OPÇÕES: VENCIMENTO MENSAL PRINCIPAL\n" + "="*40 + "\n"
 
         for t in ativos:
             ticker = yf.Ticker(f"{t}.SA")
+            if not ticker.options: continue
             
-            if not ticker.options:
-                continue
-            
-            # Filtra para evitar as semanais: pegamos os vencimentos 
-            # e buscamos aquele que tem o maior volume total acumulado,
-            # que historicamente é o vencimento mensal.
-            vencimentos = ticker.options
-            
-            # Seleciona o primeiro vencimento que tenha pelo menos 10 dias de vida
-            # (para evitar pegar opções que vencem amanhã ou semanais irrelevantes)
-            target_vencimento = vencimentos[0]
-            for v in vencimentos:
+            # FILTRO MENSAL: Pula vencimentos com menos de 7 dias (semanais/fim de série)
+            vencimento_alvo = None
+            for v in ticker.options:
                 dt_venc = datetime.strptime(v, '%Y-%m-%d')
-                dias_restantes = (dt_venc - datetime.now()).days
-                if dias_restantes > 5: # Pula o que está vencendo em cima da hora (semanais)
-                    target_vencimento = v
+                if (dt_venc - datetime.now()).days > 7:
+                    vencimento_alvo = v
                     break
+            
+            if not vencimento_alvo: vencimento_alvo = ticker.options[0]
 
-            opt = ticker.option_chain(target_vencimento)
+            opt = ticker.option_chain(vencimento_alvo)
             df = pd.concat([opt.calls, opt.puts])
             
-            # Pega as 5 opções com MAIOR VOLUME (Sinal de liquidez do mês)
+            # Top 5 em Volume do mês
             maior_volume = df.sort_values(by='volume', ascending=False).head(5)
 
-            relatorio += f"\n🔹 {t} | MENSAL: {target_vencimento}\n"
+            relatorio += f"\n🔹 {t} | Vencimento: {vencimento_alvo}\n"
             relatorio += maior_volume[['strike', 'lastPrice', 'volume']].to_string(index=False) + "\n"
             relatorio += "-"*30 + "\n"
 
         msg = EmailMessage()
-        msg['Subject'] = "📈 Resumo Mensal: PETR, VALE, BBDC, ITUB, MGLU"
+        msg['Subject'] = "📈 Opções Mensais: PETR, VALE, BBDC, ITUB, MGLU"
         msg['From'] = meu_email
         msg['To'] = meu_email
         msg.set_content(relatorio)
@@ -53,9 +46,7 @@ def executar_robo():
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(meu_email, senha_app)
             smtp.send_message(msg)
-            
-        print("✅ Relatório de vencimentos mensais enviado!")
-
+        print("✅ Relatório mensal enviado!")
     except Exception as e:
         print(f"❌ Erro: {e}")
 
