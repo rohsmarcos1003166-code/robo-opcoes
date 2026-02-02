@@ -4,68 +4,63 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-def buscar_e_enviar():
-    # --- CONFIGURAÇÕES FIXAS ---
+def rodar_extracao():
+    # --- CONFIGURAÇÃO DE ACESSO ---
     meu_email = "rohmarcos1003166@gmail.com"
-    # Senha de App que você acabou de confirmar:
-    senha_app = "evnzgzgvypabmiee"  
+    senha_app = "evnzgzgvypabmiee" 
     
     ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
-    relatorio = "🚀 RELATÓRIO DE OPÇÕES ATUALIZADO\n"
-    relatorio += "="*40 + "\n"
+    relatorio = "🚀 RELATÓRIO DE OPÇÕES B3\n" + "="*40 + "\n"
     encontrou_dados = False
 
     for t in ativos:
         try:
-            print(f"Buscando: {t}...")
+            # Busca o ticker com sufixo da B3
             ticker = yf.Ticker(f"{t}.SA")
             vencimentos = ticker.options
-
+            
             if vencimentos:
+                # Pega o primeiro vencimento
                 prox = vencimentos[0]
                 chain = ticker.option_chain(prox)
                 
-                # Junta Calls e Puts
+                # Une Calls e Puts
                 todas = pd.concat([chain.calls, chain.puts])
-
-                # FILTRO SEGURO: Se tiver preço (lastPrice), ele captura.
-                # Removemos a trava do Volume > 0 para o e-mail não ir vazio.
+                
+                # FILTRO CORRIGIDO: Se tiver preço, o robô captura.
+                # Isso resolve o erro de enviar e-mail dizendo que não achou nada.
                 ativas = todas[todas['lastPrice'] > 0].copy()
 
                 if not ativas.empty:
                     encontrou_dados = True
-                    # Pega as 5 opções com preços mais relevantes para o relatório
+                    # Top 5 opções por preço
                     top5 = ativas.sort_values(by='lastPrice', ascending=False).head(5)
-                    
                     relatorio += f"\nAtivo: {t} | Vencimento: {prox}\n"
                     for _, row in top5.iterrows():
-                        simbolo = row['contractSymbol']
-                        preco = row['lastPrice']
-                        relatorio += f"- {simbolo}: R$ {preco:.2f}\n"
+                        relatorio += f"- {row['contractSymbol']} | R$ {row['lastPrice']:.2f}\n"
                     relatorio += "-"*40 + "\n"
-
-        except Exception as e:
-            print(f"Erro em {t}: {e}")
+        except:
             continue
 
     if not encontrou_dados:
-        relatorio += "\nNota: Dados não disponíveis no Yahoo Finance neste momento."
+        relatorio += "\nDados não consolidados pelo Yahoo Finance no momento."
 
-    # --- PROCESSO DE ENVIO ---
+    # --- ENVIO DO E-MAIL ---
     msg = MIMEMultipart()
-    msg['Subject'] = "📊 Relatório Diário de Opções"
+    msg['Subject'] = "📊 Relatório de Opções - B3"
     msg['From'] = meu_email
     msg['To'] = meu_email
     msg.attach(MIMEText(relatorio, 'plain'))
 
     try:
+        # Usa porta 465 com SSL para o Gmail
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(meu_email, senha_app)
         server.send_message(msg)
         server.quit()
-        print("✅ E-mail enviado com sucesso!")
+        print("Sucesso: E-mail enviado!")
     except Exception as e:
-        print(f"❌ Erro no login ou envio: {e}")
+        print(f"Erro no envio: {e}")
 
 if __name__ == "__main__":
-    buscar_e_enviar()
+    rodar_extracao()
