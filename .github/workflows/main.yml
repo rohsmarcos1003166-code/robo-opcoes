@@ -3,7 +3,7 @@ name: Execucao_Diaria_Opcoes
 on:
   workflow_dispatch:  # Permite que você clique no "Play" para receber agora
   schedule:
-    # 21:00 UTC = 18:00 Horário de Brasília
+    # 22:00 UTC = 19:00 Horário de Brasília
     - cron: '0 21 * * *'
 
 jobs:
