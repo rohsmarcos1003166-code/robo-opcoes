@@ -4,7 +4,7 @@ on:
   workflow_dispatch:  # Permite que você clique no "Play" para receber agora
   schedule:
     # 22:00 UTC = 19:00 Horário de Brasília
-    - cron: '0 21 * * *'
+    - cron: '0 22 * * *'
 
 jobs:
   run_script:
