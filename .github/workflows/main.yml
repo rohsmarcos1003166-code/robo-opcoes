@@ -1,29 +1,27 @@
 name: Execucao_Diaria_Opcoes
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Permite rodar manualmente para testar
   schedule:
-    - cron: '0 22 * * *' # 19:00 no horário de Brasília (UTC-3)
+    - cron: '0 22 * * *' # Executa automaticamente todos os dias às 19:00 (Brasília)
 
 jobs:
   run_script:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
+      - name: Checkout do codigo
+        uses: actions/checkout@v3
 
       - name: Configurar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Instalar dependências
+      - name: Instalar bibliotecas
         run: |
-          python -m pip install --upgrade pip
           pip install yfinance pandas
 
-      - name: Executar Robô
+      - name: Executar Robo
         env:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python script.py
