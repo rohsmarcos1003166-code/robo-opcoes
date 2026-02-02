@@ -5,10 +5,9 @@ import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-def buscar_top5_opcoes():
+def buscar_dados_com_fallback():
     meu_email = "rohsmarcos1003166@gmail.com"
     senha = os.getenv("EMAIL_PASSWORD")
-    
     ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
     todas_opcoes = []
     
@@ -18,16 +17,23 @@ def buscar_top5_opcoes():
             vencimentos = ticker.options
             
             if vencimentos:
-                # Pega o vencimento mais próximo
-                prox_vencimento = vencimentos[0]
-                calls = ticker.option_chain(prox_vencimento).calls
-                # Filtra apenas opções que tiveram movimento
-                ativas = calls[calls['volume'] > 0].copy()
+                prox = vencimentos[0]
+                chain = ticker.option_chain(prox)
+                
+                # Une Calls e Puts
+                calls, puts = chain.calls, chain.puts
+                calls['Tipo'], puts['Tipo'] = 'CALL (Compra)', 'PUT (Venda)'
+                todas = pd.concat([calls, puts])
+                
+                # Filtra apenas quem teve negociação (Volume > 0)
+                # O yfinance mantém os dados do último pregão se o mercado estiver fechado
+                ativas = todas[todas['volume'] > 0].copy()
                 
                 for _, linha in ativas.iterrows():
                     todas_opcoes.append({
                         'Ativo': t,
                         'Simbolo': linha['contractSymbol'],
+                        'Tipo': linha['Tipo'],
                         'Var': linha['percentChange'],
                         'Preco': linha['lastPrice'],
                         'Vol': linha['volume']
@@ -35,38 +41,42 @@ def buscar_top5_opcoes():
 
         if todas_opcoes:
             df = pd.DataFrame(todas_opcoes)
-            # Pega as 5 que mais valorizaram
-            top5 = df.sort_values(by='Var', ascending=False).head(5)
-
-            relatorio = "🏆 TOP 5 OPÇÕES - MAIORES VALORIZAÇÕES DA BOLSA\n"
-            relatorio += f"Ativos monitorados: {', '.join(ativos)}\n"
-            relatorio += "-" * 45 + "\n\n"
             
-            for i, (index, row) in enumerate(top5.iterrows(), 1):
-                relatorio += f"{i}º LUGAR: {row['Simbolo']} ({row['Ativo']})\n"
-                relatorio += f"📈 Valorização: +{row['Var']:.2f}%\n"
-                relatorio += f"💰 Preço: R$ {row['Preco']:.2f} | Volume: {int(row['Vol'])}\n"
-                relatorio += "." * 45 + "\n"
+            # 1. Ranking de Valorização (Top 5)
+            top5_alta = df.sort_values(by='Var', ascending=False).head(5)
+            
+            # 2. A Mais Negociada do Dia (Maior Volume)
+            mais_negociada = df.sort_values(by='Vol', ascending=False).iloc[0]
+
+            relatorio = "📊 RELATÓRIO DO ÚLTIMO PREGÃO (Sexta-feira/Hoje)\n"
+            relatorio += "="*45 + "\n\n"
+            relatorio += "💎 A OPÇÃO MAIS NEGOCIADA:\n"
+            relatorio += f"Ativo: {mais_negociada['Ativo']} | Símbolo: {mais_negociada['Simbolo']}\n"
+            relatorio += f"Tipo: {mais_negociada['Tipo']}\n"
+            relatorio += f"Volume: {int(mais_negociada['Vol']):,} contratos\n"
+            relatorio += f"Fechamento: R$ {mais_negociada['Preco']:.2f} ({mais_negociada['Var']:+.2f}%)\n"
+            relatorio += "\n" + "-"*45 + "\n\n"
+            
+            relatorio += "🚀 TOP 5 MAIORES ALTAS:\n"
+            for i, (index, row) in enumerate(top5_alta.iterrows(), 1):
+                relatorio += f"{i}º {row['Simbolo']} ({row['Ativo']}): +{row['Var']:.2f}% | R$ {row['Preco']:.2f}\n"
         else:
-            relatorio = "Aviso: Nenhuma negociação encontrada nos ativos selecionados hoje."
+            relatorio = "Erro: Não foram encontrados dados de negociação recentes."
 
     except Exception as e:
-        relatorio = f"Erro ao processar ranking: {str(e)}"
+        relatorio = f"Erro no processamento: {str(e)}"
 
-    # Montagem do E-mail
+    # Configuração do E-mail
     msg = MIMEMultipart()
-    msg['Subject'] = "🔥 Ranking das 5 Opções Explosivas"
+    msg['Subject'] = "📈 Resultado Opções: Mais Negociada + Top 5"
     msg['From'] = meu_email
     msg['To'] = meu_email
     msg.attach(MIMEText(relatorio, 'plain'))
 
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(meu_email, senha)
-            server.send_message(msg)
-        print("Relatório enviado com sucesso!")
-    except Exception as e:
-        print(f"Erro no envio do e-mail: {e}")
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(meu_email, senha)
+        server.send_message(msg)
+    print("E-mail enviado!")
 
 if __name__ == "__main__":
-    buscar_top5_opcoes()
+    buscar_dados_com_fallback()
