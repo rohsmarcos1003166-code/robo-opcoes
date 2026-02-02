@@ -1,10 +1,9 @@
 name: Execucao_Diaria_Opcoes
 
 on:
-  workflow_dispatch:  # Permite que você clique no "Play" para receber agora
+  workflow_dispatch: # Permite que você clique no botão para rodar agora
   schedule:
-    # 22:00 UTC = 19:00 Horário de Brasília
-    - cron: '0 22 * * *'
+    - cron: '0 22 * * *' # Roda às 19:00 Horário de Brasília
 
 jobs:
   run_script:
@@ -18,10 +17,11 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Instalar Bibliotecas
-        run: pip install yfinance pandas
+      - name: Instalar bibliotecas
+        run: |
+          pip install yfinance pandas
 
-      - name: Rodar o Robo
+      - name: Executar Robo
         env:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python script.py
