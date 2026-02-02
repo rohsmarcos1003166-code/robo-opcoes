@@ -2,54 +2,50 @@ import yfinance as yf
 import pandas as pd
 import smtplib
 import os
+import time
 from email.message import EmailMessage
 
 def executar_robo():
-    # --- E-MAIL CORRIGIDO COM O 'S' ---
-    meu_email = "rohsmarcos1003166@gmail.com"
-    # Puxa a senha do Segredo do GitHub chamado EMAIL_PASSWORD
-    senha_app = os.getenv("EMAIL_PASSWORD") 
+    meu_email = "rohmarcos1003166@gmail.com"
+    senha_app = os.getenv("EMAIL_PASSWORD")
     
-    if not senha_app:
-        print("ERRO: O segredo 'EMAIL_PASSWORD' não foi encontrado no GitHub.")
-        return
+    # Lista completa com os 4 ativos que você quer
+    ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
+    relatorio = "📊 RELATÓRIO DE OPÇÕES (STRIKE E VOLUME)\n" + "="*50 + "\n"
 
-    relatorio = "🚀 RELATÓRIO DE OPÇÕES B3\n" + "="*35 + "\n"
-    encontrou = False
+    for t in ativos:
+        ticker = yf.Ticker(f"{t}.SA")
+        relatorio += f"\n🔹 ATIVO: {t}\n"
+        achou = False
 
-    try:
-        for t in ["PETR4", "VALE3", "BBDC4", "ITUB4"]:
-            ticker = yf.Ticker(f"{t}.SA")
-            vencimentos = ticker.options
-            
-            if vencimentos:
-                chain = ticker.option_chain(vencimentos[0])
-                # Filtra opções com preço ativo para o e-mail não ir vazio
-                ativas = chain.calls[chain.calls['lastPrice'] > 0].head(3)
-                
-                if not ativas.empty:
-                    encontrou = True
-                    relatorio += f"\nAtivo: {t} | Vencimento: {vencimentos[0]}\n"
-                    relatorio += ativas[['contractSymbol', 'lastPrice']].to_string(index=False) + "\n"
-        
-        if not encontrou:
-            relatorio += "Nenhum dado de negociação disponível agora."
+        # Tenta nos 3 meses de vencimento mais próximos
+        for data in ticker.options[:3]:
+            if achou: break
+            for tentativa in range(3):
+                try:
+                    opt = ticker.option_chain(data)
+                    df = pd.concat([opt.calls, opt.puts])
+                    # Filtra negociações reais e ordena por volume
+                    ativas = df[df['volume'] > 0].sort_values(by='volume', ascending=False).head(5)
 
-        # CONFIGURAÇÃO DA MENSAGEM
-        msg = EmailMessage()
-        msg['Subject'] = "📊 Relatório de Opções Atualizado"
-        msg['From'] = meu_email
-        msg['To'] = meu_email
-        msg.set_content(relatorio)
+                    if not ativas.empty:
+                        relatorio += f"📅 Vencimento: {data}\n"
+                        relatorio += ativas[['contractSymbol', 'strike', 'lastPrice', 'volume']].to_string(index=False) + "\n"
+                        achou = True
+                        break
+                except:
+                    time.sleep(5)
 
-        # ENVIO
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(meu_email, senha_app)
-            smtp.send_message(msg)
-        print("✅ Sucesso! E-mail enviado para rohsmarcos1003166@gmail.com")
+    msg = EmailMessage()
+    msg['Subject'] = "📈 Relatório de Opções: Strike e Volume"
+    msg['From'] = meu_email
+    msg['To'] = meu_email
+    msg.set_content(relatorio)
 
-    except Exception as e:
-        print(f"❌ Erro: {e}")
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(meu_email, senha_app)
+        smtp.send_message(msg)
+    print("✅ Relatório enviado com os 4 ativos!")
 
 if __name__ == "__main__":
     executar_robo()
