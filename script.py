@@ -1,37 +1,71 @@
 import yfinance as yf
 import smtplib
 import os
+import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-def buscar_e_enviar():
-    # 1. Configurações
+def buscar_top5_opcoes():
     meu_email = "rohsmarcos1003166@gmail.com"
     senha = os.getenv("EMAIL_PASSWORD")
     
-    # 2. Busca o preço real da PETR4 na bolsa
+    ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
+    todas_opcoes = []
+    
     try:
-        petr = yf.Ticker("PETR4.SA")
-        preco = petr.history(period="1d")['Close'].iloc[-1]
-        mensagem_texto = f"Relatório do Robô:\n\nPETR4 está custando: R$ {preco:.2f}"
-    except Exception as e:
-        mensagem_texto = f"Erro ao buscar dados: {e}"
+        for t in ativos:
+            ticker = yf.Ticker(f"{t}.SA")
+            vencimentos = ticker.options
+            
+            if vencimentos:
+                prox_vencimento = vencimentos[0]
+                # Pega as Calls (opções de compra)
+                calls = ticker.option_chain(prox_vencimento).calls
+                # Filtra apenas as que tiveram negociação (Volume > 0)
+                ativas = calls[calls['volume'] > 0].copy()
+                
+                if not ativas.empty:
+                    for _, linha in ativas.iterrows():
+                        todas_opcoes.append({
+                            'Ativo': t,
+                            'Simbolo': linha['contractSymbol'],
+                            'Valorizacao': linha['percentChange'],
+                            'Preco': linha['lastPrice'],
+                            'Volume': linha['volume']
+                        })
 
-    # 3. Prepara o e-mail
+        # Transforma em tabela e pega as 5 melhores
+        df = pd.DataFrame(todas_opcoes)
+        top5 = df.sort_values(by='Valorizacao', ascending=False).head(5)
+
+        # Monta o corpo do e-mail
+        relatorio = "🏆 TOP 5 OPÇÕES QUE MAIS VALORIZARAM HOJE\n"
+        relatorio += "(Considerando PETR4, VALE3, BBDC4 e ITUB4)\n\n"
+        
+        for i, (index, row) in enumerate(top5.iterrows(), 1):
+            relatorio += f"{i}º Lugar: {row['Simbolo']} ({row['Ativo']})\n"
+            relatorio += f"📈 Valorização: +{row['Valorizacao']:.2f}%\n"
+            relatorio += f"💰 Preço do Prêmio: R$ {row['Preco']:.2f}\n"
+            relatorio += f"📊 Volume: {int(row['Volume'])}\n"
+            relatorio += "-" * 35 + "\n"
+
+    except Exception as e:
+        relatorio = f"Erro ao processar o ranking: {e}"
+
+    # Envio do e-mail
     msg = MIMEMultipart()
-    msg['Subject'] = "Dados da Bolsa - PETR4"
+    msg['Subject'] = "🔥 TOP 5: Maiores Valorizações em Opções"
     msg['From'] = meu_email
     msg['To'] = meu_email
-    msg.attach(MIMEText(mensagem_texto, 'plain'))
+    msg.attach(MIMEText(relatorio, 'plain'))
 
-    # 4. Envia
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(meu_email, senha)
             server.send_message(msg)
-        print("E-mail com informações enviado com sucesso!")
+        print("Ranking Top 5 enviado!")
     except Exception as e:
-        print(f"Erro no envio: {e}")
+        print(f"Erro: {e}")
 
 if __name__ == "__main__":
-    buscar_e_enviar()
+    buscar_top5_opcoes()
