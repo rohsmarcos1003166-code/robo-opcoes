@@ -1,24 +1,27 @@
 name: Execucao_Diaria_Opcoes
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Permite que você clique no "Play" para receber agora
+  schedule:
+    # 21:00 UTC = 18:00 Horário de Brasília
+    - cron: '0 21 * * *'
 
 jobs:
   run_script:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout do codigo
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Configurar Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install libraries
+      - name: Instalar Bibliotecas
         run: pip install yfinance pandas
 
-      - name: Run Robot
+      - name: Rodar o Robo
         env:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python script.py
