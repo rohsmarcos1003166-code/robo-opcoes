@@ -1,65 +1,67 @@
-import yfinance as ticker
+import yfinance as yf
 import pandas as pd
 import smtplib
-from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# --- CONFIGURAÇÃO ---
-ATIVOS = ['PETR4.SA', 'VALE3.SA', 'BBDC4.SA', 'ITUB4.SA']
-MEU_EMAIL = "seu-email@gmail.com"
-MINHA_SENHA = "sua-senha-de-app" # Aquela de 16 dígitos do Google
-
-def coletar_dados():
-    relatorio = "Relatório de Opções - Consolidado\n\n"
+def buscar_dados_com_fallback():
+    meu_email = "rohmarcos1003166@gmail.com"
+    # ABAIXO: Sua senha de app atualizada
+    senha = "wvsj hkyd ywtc bcye" 
+    ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
+    relatorio = "🚀 RELATÓRIO DE OPÇÕES - MERCADO B3\n" + "-"*45 + "\n"
     encontrou_dados = False
 
-    for acao in ATIVOS:
+    for t in ativos:
         try:
-            print(f"Coletando dados de {acao}...")
-            obj = ticker.Ticker(acao)
-            vencimentos = obj.options
-            
-            if not vencimentos:
-                continue
+            ticker = yf.Ticker(f"{t}.SA")
+            vencimentos = ticker.options
 
-            # Pega o primeiro vencimento disponível
-            opcoes = obj.option_chain(vencimentos[0])
-            todas = pd.concat([opcoes.calls, codecs.puts])
+            if vencimentos:
+                prox = vencimentos[0]
+                chain = ticker.option_chain(prox)
+                
+                calls = chain.calls
+                puts = chain.puts
+                calls['Tipo'] = 'CALL (Compra)'
+                puts['Tipo'] = 'PUT (Venda)'
+                todas = pd.concat([calls, puts])
 
-            # AJUSTE DA LINHA 27-31: Filtro mais flexível (Preço > 0)
-            # Aceita dados mesmo que o volume oficial ainda não tenha caído no sistema
-            ativas = todas[todas['lastPrice'] > 0.01].copy()
+                # CORREÇÃO: Filtramos por preço maior que zero para garantir que venha informação
+                ativas = todas[todas['lastPrice'] > 0].copy()
 
-            if not ativas.empty:
-                encontrou_dados = True
-                relatorio += f"\n--- {acao} (Vencimento: {vencimentos[0]}) ---\n"
-                # Pega as 5 mais negociadas ou com maior preço
-                top5 = ativas.sort_values(by='lastPrice', ascending=False).head(5)
-                for i, row in top5.iterrows():
-                    relatorio += f"Opção: {row['contractSymbol']} | Preço: R$ {row['lastPrice']:.2f}\n"
+                if not ativas.empty:
+                    encontrou_dados = True
+                    # Pega as 5 opções com maior preço/movimentação
+                    top5 = ativas.sort_values(by='lastPrice', ascending=False).head(5)
+                    
+                    relatorio += f"\nAtivo Principal: {t} | Vencimento: {prox}\n"
+                    for _, row in top5.iterrows():
+                        relatorio += f"- {row['contractSymbol']} ({row['Tipo']}) | Preço: R$ {row['lastPrice']:.2f}\n"
+                    relatorio += "-"*45 + "\n"
 
         except Exception as e:
-            print(f"Erro ao processar {acao}: {e}")
+            print(f"Erro ao processar {t}: {str(e)}")
             continue
 
-    if encontrou_dados:
-        enviar_email(relatorio)
-    else:
-        enviar_email("O mercado não gerou dados processáveis para os filtros atuais.")
+    if not encontrou_dados:
+        relatorio = "Atenção: O mercado não retornou dados de negociação para os filtros aplicados no momento."
 
-def enviar_email(conteudo):
-    msg = EmailMessage()
-    msg.set_content(conteudo)
-    msg['Subject'] = "Relatório de Opções B3"
-    msg['From'] = MEU_EMAIL
-    msg['To'] = MEU_EMAIL
+    # --- CONFIGURAÇÃO E ENVIO DO E-MAIL ---
+    msg = MIMEMultipart()
+    msg['Subject'] = "📊 Resultado Opções: Atualizado"
+    msg['From'] = meu_email
+    msg['To'] = meu_email
+    msg.attach(MIMEText(relatorio, 'plain'))
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(MEU_EMAIL, MINHA_SENHA)
-            smtp.send_message(msg)
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(meu_email, senha)
+        server.send_message(msg)
+        server.quit()
         print("E-mail enviado com sucesso!")
     except Exception as e:
-        print(f"Falha ao enviar e-mail: {e}")
+        print(f"Falha no envio do e-mail: {str(e)}")
 
 if __name__ == "__main__":
-    coletar_dados()
+    buscar_dados_com_fallback()
