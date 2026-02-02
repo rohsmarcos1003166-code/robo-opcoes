@@ -1,9 +1,9 @@
 name: Execucao_Diaria_Opcoes
 
 on:
-  workflow_dispatch: # Permite rodar manualmente para testar
+  workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # Executa automaticamente todos os dias às 19:00 (Brasília)
+    - cron: '0 22 * * *' # 19h Brasília
 
 jobs:
   run_script:
