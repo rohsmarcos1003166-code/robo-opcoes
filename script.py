@@ -1,66 +1,55 @@
 import yfinance as yf
 import pandas as pd
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import os
+from email.message import EmailMessage
 
-def rodar_extracao():
-    # --- CONFIGURAÇÃO DE ACESSO ---
-    meu_email = "rohmarcos1003166@gmail.com"
-    senha_app = "evnzgzgvypabmiee" 
+def executar_robo():
+    # --- E-MAIL CORRIGIDO COM O 'S' ---
+    meu_email = "rohsmarcos1003166@gmail.com"
+    # Puxa a senha do Segredo do GitHub chamado EMAIL_PASSWORD
+    senha_app = os.getenv("EMAIL_PASSWORD") 
     
-    ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4"]
-    relatorio = "🚀 RELATÓRIO DE OPÇÕES B3\n" + "="*40 + "\n"
-    encontrou_dados = False
+    if not senha_app:
+        print("ERRO: O segredo 'EMAIL_PASSWORD' não foi encontrado no GitHub.")
+        return
 
-    for t in ativos:
-        try:
-            # Busca o ticker com sufixo da B3
+    relatorio = "🚀 RELATÓRIO DE OPÇÕES B3\n" + "="*35 + "\n"
+    encontrou = False
+
+    try:
+        for t in ["PETR4", "VALE3", "BBDC4", "ITUB4"]:
             ticker = yf.Ticker(f"{t}.SA")
             vencimentos = ticker.options
             
             if vencimentos:
-                # Pega o primeiro vencimento
-                prox = vencimentos[0]
-                chain = ticker.option_chain(prox)
+                chain = ticker.option_chain(vencimentos[0])
+                # Filtra opções com preço ativo para o e-mail não ir vazio
+                ativas = chain.calls[chain.calls['lastPrice'] > 0].head(3)
                 
-                # Une Calls e Puts
-                todas = pd.concat([chain.calls, chain.puts])
-                
-                # FILTRO CORRIGIDO: Se tiver preço, o robô captura.
-                # Isso resolve o erro de enviar e-mail dizendo que não achou nada.
-                ativas = todas[todas['lastPrice'] > 0].copy()
-
                 if not ativas.empty:
-                    encontrou_dados = True
-                    # Top 5 opções por preço
-                    top5 = ativas.sort_values(by='lastPrice', ascending=False).head(5)
-                    relatorio += f"\nAtivo: {t} | Vencimento: {prox}\n"
-                    for _, row in top5.iterrows():
-                        relatorio += f"- {row['contractSymbol']} | R$ {row['lastPrice']:.2f}\n"
-                    relatorio += "-"*40 + "\n"
-        except:
-            continue
+                    encontrou = True
+                    relatorio += f"\nAtivo: {t} | Vencimento: {vencimentos[0]}\n"
+                    relatorio += ativas[['contractSymbol', 'lastPrice']].to_string(index=False) + "\n"
+        
+        if not encontrou:
+            relatorio += "Nenhum dado de negociação disponível agora."
 
-    if not encontrou_dados:
-        relatorio += "\nDados não consolidados pelo Yahoo Finance no momento."
+        # CONFIGURAÇÃO DA MENSAGEM
+        msg = EmailMessage()
+        msg['Subject'] = "📊 Relatório de Opções Atualizado"
+        msg['From'] = meu_email
+        msg['To'] = meu_email
+        msg.set_content(relatorio)
 
-    # --- ENVIO DO E-MAIL ---
-    msg = MIMEMultipart()
-    msg['Subject'] = "📊 Relatório de Opções - B3"
-    msg['From'] = meu_email
-    msg['To'] = meu_email
-    msg.attach(MIMEText(relatorio, 'plain'))
+        # ENVIO
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(meu_email, senha_app)
+            smtp.send_message(msg)
+        print("✅ Sucesso! E-mail enviado para rohsmarcos1003166@gmail.com")
 
-    try:
-        # Usa porta 465 com SSL para o Gmail
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.login(meu_email, senha_app)
-        server.send_message(msg)
-        server.quit()
-        print("Sucesso: E-mail enviado!")
     except Exception as e:
-        print(f"Erro no envio: {e}")
+        print(f"❌ Erro: {e}")
 
 if __name__ == "__main__":
-    rodar_extracao()
+    executar_robo()
