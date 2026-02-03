@@ -1,4 +1,4 @@
-Import yfinance as yf
+import yfinance as yf
 import pandas as pd
 import smtplib
 from email.message import EmailMessage
@@ -59,4 +59,3 @@ try:
         print("Enviado!")
 except Exception as e:
     print(f"Erro: {e}")
-Esse código aqui ele responde normalmente acabei de testar ele ele responde muito bem
