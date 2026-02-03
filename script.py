@@ -4,59 +4,73 @@ import smtplib
 from email.message import EmailMessage
 import os
 
+def formatar_tabela_html(titulo, ticker, df):
+    if df.empty:
+        return f"<h3>{titulo} ({ticker})</h3><p>Dados não disponíveis no momento.</p>"
+    
+    # Renomeando as colunas para o seu padrão
+    df_fmt = df.copy()
+    html_table = df_fmt.to_html(index=False, border=1, justify='center')
+    
+    return f"<h3>{titulo} - {ticker}</h3>{html_table}"
+
 def buscar_dados_vix():
-    print("Iniciando extração de dados do VIX...")
     try:
-        # O ticker para o índice VIX no Yahoo Finance é ^VIX
         vix = yf.Ticker("^VIX")
-        
-        # Obtém as datas de vencimento de opções disponíveis
-        vencimentos = vix.options
-        
-        if not vencimentos:
-            print("Aviso: Nenhuma opção encontrada para ^VIX no momento.")
-            return None
-        
-        # Pega o primeiro vencimento disponível
-        data_vencimento = vencimentos[0]
-        opcoes = vix.option_chain(data_vencimento)
-        
-        # Seleciona as CALLS e as colunas principais
-        df_calls = opcoes.calls[['lastPrice', 'strike', 'volume', 'openInterest']].head(15)
-        
-        html = f"""
-        <html>
-            <body>
-                <h2>Relatório de Opções - Mercado Americano (VIX)</h2>
-                <p><b>Ativo:</b> ^VIX (CBOE Volatility Index)</p>
-                <p><b>Vencimento Selecionado:</b> {data_vencimento}</p>
-                {df_calls.to_html(index=False)}
-                <p><i>Dados extraídos via Yahoo Finance.</i></p>
-            </body>
-        </html>
-        """
-        return html
-    except Exception as e:
-        print(f"Erro ao buscar dados do VIX: {e}")
-        return None
+        vencimento = vix.options[0]
+        opcoes = vix.option_chain(vencimento).calls[['contractSymbol', 'strike', 'volume']].head(10)
+        opcoes.columns = ['Ativo', 'Strike', 'Volume'] # Padrão solicitado
+        return formatar_tabela_html("Mercado Americano", "^VIX", opcoes)
+    except:
+        return "<h3>Mercado Americano (VIX)</h3><p>Falha ao extrair dados.</p>"
 
-# --- Fluxo de Envio ---
-corpo_email = buscar_dados_vix()
-
-if corpo_email:
-    msg = EmailMessage()
-    msg['Subject'] = "OPÇÕES VIX: MERCADO AMERICANO"
-    msg['From'] = "rohsmarcos1003166@gmail.com"
-    msg['To'] = "rohsmarcos1003166@gmail.com"
-    msg.add_alternative(corpo_email, subtype='html')
-
+def buscar_dados_brasil():
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            senha = os.environ.get('EMAIL_PASSWORD')
-            smtp.login(msg['From'], senha)
-            smtp.send_message(msg)
-            print("Sucesso: E-mail com dados do VIX enviado!")
-    except Exception as e:
-        print(f"Erro no envio do e-mail: {e}")
-else:
-    print("Falha na extração. O e-mail não foi enviado.")
+        # Buscando PETR4 para extrair a cadeia de opções brasileira
+        petr = yf.Ticker("PETR4.SA")
+        vencimento = petr.options[0]
+        opcoes = petr.option_chain(vencimento).calls[['contractSymbol', 'strike', 'volume']].head(10)
+        
+        # Ajustando nomes para o padrão: Ativo, Strike, Volume
+        opcoes.columns = ['Ativo', 'Strike', 'Volume']
+        
+        # O 'strike' da B3 no Yahoo vem multiplicado por 1 ou 100, ajustamos conforme seu exemplo (36.00 ou 3600)
+        return formatar_tabela_html("Mercado Brasileiro", "PETR4", opcoes)
+    except:
+        return "<h3>Mercado Brasileiro (PETR4)</h3><p>Falha ao extrair dados da B3.</p>"
+
+# Montagem do corpo do e-mail
+html_vix = buscar_dados_vix()
+html_brasil = buscar_dados_brasil()
+
+corpo_email = f"""
+<html>
+<body style="font-family: Arial, sans-serif;">
+    <h2>Relatório Consolidado de Opções</h2>
+    <div style="margin-bottom: 20px;">
+        {html_vix}
+    </div>
+    <hr>
+    <div style="margin-top: 20px;">
+        {html_brasil}
+    </div>
+    <br>
+    <p style="font-size: 10px; color: gray;">Exemplo de formato processado: Ativo PETRB360 | Strike 36.00 | Volume 18767</p>
+</body>
+</html>
+"""
+
+# Envio
+msg = EmailMessage()
+msg['Subject'] = "TABELA DE OPÇÕES: VIX & PETR4"
+msg['From'] = "rohsmarcos1003166@gmail.com"
+msg['To'] = "rohsmarcos1003166@gmail.com"
+msg.add_alternative(corpo_email, subtype='html')
+
+try:
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
+        smtp.send_message(msg)
+        print("Relatório enviado com sucesso!")
+except Exception as e:
+    print(f"Erro no envio: {e}")
