@@ -4,38 +4,57 @@ import smtplib
 from email.message import EmailMessage
 import os
 
-def buscar_dados_opcoes():
+def testar_e_gerar_relatorio():
+    print("Iniciando extração de dados do Yahoo Finance...")
     try:
-        # Importante: Usar .SA para ativos brasileiros
-        ticker = yf.Ticker("PETR4.SA")
+        # Busca o ativo com o sufixo correto para o mercado brasileiro
+        petr = yf.Ticker("PETR4.SA")
         
-        # Pega a data de vencimento mais próxima
-        vencimentos = ticker.options
+        # Obtém as datas de vencimento disponíveis
+        vencimentos = petr.options
         if not vencimentos:
-            return None, "Nenhum vencimento encontrado."
-        
-        # Extrai as chamadas (calls) do primeiro vencimento
-        opcoes = ticker.option_chain(vencimentos[0])
-        df_calls = opcoes.calls[['lastPrice', 'strike', 'percentChange']]
-        return df_calls.head(10).to_html(), None
-    except Exception as e:
-        return None, str(e)
+            return None, "Erro: Nenhuma opção encontrada para PETR4.SA. Verifique a conexão com o Yahoo."
 
-# --- Execução Principal ---
-corpo_email, erro = buscar_dados_opcoes()
+        # Pega o primeiro vencimento disponível (mais próximo)
+        data_vencimento = vencimentos[0]
+        opcoes = petr.option_chain(data_vencimento)
+        
+        # Filtra as colunas principais das CALLS
+        df_calls = opcoes.calls[['lastPrice', 'strike', 'percentChange']].head(10)
+        
+        # Cria a tabela em HTML para o e-mail
+        html = f"""
+        <html>
+            <body>
+                <h2>Relatório de Teste - Opções PETR4</h2>
+                <p><b>Vencimento Selecionado:</b> {data_vencimento}</p>
+                {df_calls.to_html(index=False)}
+                <p><i>Este é um envio de teste manual.</i></p>
+            </body>
+        </html>
+        """
+        return html, None
+    except Exception as e:
+        return None, f"Falha técnica: {str(e)}"
+
+# --- Processo de Envio ---
+corpo_html, erro = testar_e_gerar_relatorio()
 
 if erro:
-    print(f"Erro ao buscar dados: {erro}")
+    print(erro)
 else:
     msg = EmailMessage()
-    msg['Subject'] = "OPÇÕES: VENCIMENTO MENSAL PETR4"
+    msg['Subject'] = "TESTE MANUAL: Opções PETR4"
     msg['From'] = "rohsmarcos1003166@gmail.com"
     msg['To'] = "rohsmarcos1003166@gmail.com"
-    msg.set_content("Erro ao processar dados.")
-    msg.add_alternative(f"<h3>Relatório de Opções</h3>{corpo_email}", subtype='html')
+    msg.add_alternative(corpo_html, subtype='html')
 
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        # Usa a secret configurada no GitHub
-        smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
-        smtp.send_message(msg)
-    print("E-mail enviado com sucesso!")
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            # O EMAIL_PASSWORD deve estar configurado nos Secrets do GitHub
+            senha = os.environ.get('EMAIL_PASSWORD')
+            smtp.login(msg['From'], senha)
+            smtp.send_message(msg)
+            print("Sucesso: E-mail de teste enviado!")
+    except Exception as e:
+        print(f"Erro ao enviar e-mail: {e}")
