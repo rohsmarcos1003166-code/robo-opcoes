@@ -1,15 +1,15 @@
-name: Relatorio_Hibrido_Opcoes
+name: Relatorio_Hibrido_VIX_e_B3
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # 19h Brasília
+    - cron: '0 22 * * *' # 19h de Brasília
 
 jobs:
   run_script:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código
+      - name: Checkout do codigo
         uses: actions/checkout@v3
 
       - name: Configurar Python
