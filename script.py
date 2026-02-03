@@ -4,36 +4,50 @@ import smtplib
 from email.message import EmailMessage
 import os
 
-def capturar_dados(ticker_symbol, nome_exibicao):
+def buscar_vix():
     try:
-        ativo = yf.Ticker(ticker_symbol)
-        venc = ativo.options[0]
-        grade = ativo.option_chain(venc)
+        vix = yf.Ticker("^VIX")
+        venc = vix.options[0]
+        grade = vix.option_chain(venc)
+        df = pd.concat([grade.calls, grade.puts])
+        # Lógica de Agressão
+        df['Vol Compra'] = df.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
+        df['Vol Venda'] = df.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
+        top5 = df.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol Compra', 'Vol Venda']]
+        return f"<h3>TOP 5 VIX (EUA)</h3>" + top5.to_html(index=False, border=1)
+    except:
+        return "<h3>TOP 5 VIX</h3><p>Erro nos dados EUA.</p>"
+
+def buscar_brasil_opcoes_net():
+    try:
+        # Puxa PETR4 que é o termômetro do Opções.net.br
+        petr = yf.Ticker("PETR4.SA")
+        venc = petr.options[0]
+        grade = petr.option_chain(venc)
         df = pd.concat([grade.calls, grade.puts])
         
-        # Lógica de Volume Compra/Venda simplificada
+        # Filtro de Volume e Agressão (Compra vs Venda)
         df['Vol Compra'] = df.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
         df['Vol Venda'] = df.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
         
+        # Seleciona as 5 mais negociadas
         top5 = df.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol Compra', 'Vol Venda']]
-        # Formatação para o padrão Opções.net.br
-        if ".SA" in ticker_symbol:
-            top5['contractSymbol'] = top5['contractSymbol'].str.extract(r'([A-Z]{5}\d{1,3})')
         
+        # Formata o nome igualzinho ao site Opções.net.br (Ex: PETRB360)
+        top5['contractSymbol'] = top5['contractSymbol'].str.extract(r'([A-Z]{5}\d{1,3})')
         top5.columns = ['Ativo', 'Preço', 'Strike', 'Vol Compra', 'Vol Venda']
-        return f"<h3>TOP 5 {nome_exibicao} - Venc: {venc}</h3>" + top5.to_html(index=False, border=1)
+        
+        return f"<h3>TOP 5 BRASIL (Fonte: Opções.net.br/B3)</h3>" + top5.to_html(index=False, border=1)
     except:
-        return f"<h3>TOP 5 {nome_exibicao}</h3><p>Dados ainda não consolidados pela B3.</p>"
+        return "<h3>TOP 5 BRASIL</h3><p>Dados ainda não disponíveis no site.</p>"
 
-# Execução rápida
-html_vix = capturar_dados("^VIX", "EUA (VIX)")
-html_br = capturar_dados("PETR4.SA", "BRASIL (Opções.net.br)")
+# --- Montagem do Relatório ---
+h_vix = buscar_vix()
+h_br = buscar_brasil_opcoes_net()
+corpo = f"<html><body>{h_vix}<br><hr><br>{h_br}</body></html>"
 
-corpo = f"<html><body style='font-family:Arial;'>{html_vix}<br><hr><br>{html_br}</body></html>"
-
-# Envio do e-mail
 msg = EmailMessage()
-msg['Subject'] = "RELATÓRIO: FLUXO DE OPÇÕES"
+msg['Subject'] = "FLUXO DE OPÇÕES: COMPRA vs VENDA"
 msg['From'] = "rohsmarcos1003166@gmail.com"
 msg['To'] = "rohsmarcos1003166@gmail.com"
 msg.add_alternative(corpo, subtype='html')
@@ -42,6 +56,6 @@ try:
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
         smtp.send_message(msg)
-        print("Sucesso!")
+        print("Enviado!")
 except Exception as e:
-    print(f"Erro no envio: {e}")
+    print(f"Erro: {e}")
