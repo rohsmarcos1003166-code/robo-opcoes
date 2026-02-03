@@ -1,54 +1,41 @@
 import yfinance as yf
 import pandas as pd
 import smtplib
-import os
 from email.message import EmailMessage
-from datetime import datetime, timedelta
+import os
 
-def executar_robo():
+def buscar_dados_opcoes():
     try:
-        meu_email = "rohsmarcos1003166@gmail.com"
-        senha_app = os.getenv("EMAIL_PASSWORD")
+        # Importante: Usar .SA para ativos brasileiros
+        ticker = yf.Ticker("PETR4.SA")
         
-        ativos = ["PETR4", "VALE3", "BBDC4", "ITUB4", "MGLU3"]
-        relatorio = f"📊 OPÇÕES: VENCIMENTO MENSAL PRINCIPAL\n" + "="*40 + "\n"
-
-        for t in ativos:
-            ticker = yf.Ticker(f"{t}.SA")
-            if not ticker.options: continue
-            
-            # FILTRO MENSAL: Pula vencimentos com menos de 7 dias (semanais/fim de série)
-            vencimento_alvo = None
-            for v in ticker.options:
-                dt_venc = datetime.strptime(v, '%Y-%m-%d')
-                if (dt_venc - datetime.now()).days > 7:
-                    vencimento_alvo = v
-                    break
-            
-            if not vencimento_alvo: vencimento_alvo = ticker.options[0]
-
-            opt = ticker.option_chain(vencimento_alvo)
-            df = pd.concat([opt.calls, opt.puts])
-            
-            # Top 5 em Volume do mês
-            maior_volume = df.sort_values(by='volume', ascending=False).head(5)
-
-            relatorio += f"\n🔹 {t} | Vencimento: {vencimento_alvo}\n"
-            relatorio += maior_volume[['strike', 'lastPrice', 'volume']].to_string(index=False) + "\n"
-            relatorio += "-"*30 + "\n"
-
-        msg = EmailMessage()
-        msg['Subject'] = "📈 Opções Mensais: PETR, VALE, BBDC, ITUB, MGLU"
-        msg['From'] = meu_email
-        msg['To'] = meu_email
-        msg.set_content(relatorio)
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(meu_email, senha_app)
-            smtp.send_message(msg)
-        print("✅ Relatório mensal enviado!")
+        # Pega a data de vencimento mais próxima
+        vencimentos = ticker.options
+        if not vencimentos:
+            return None, "Nenhum vencimento encontrado."
+        
+        # Extrai as chamadas (calls) do primeiro vencimento
+        opcoes = ticker.option_chain(vencimentos[0])
+        df_calls = opcoes.calls[['lastPrice', 'strike', 'percentChange']]
+        return df_calls.head(10).to_html(), None
     except Exception as e:
-        print(f"❌ Erro: {e}")
+        return None, str(e)
 
-if __name__ == "__main__":
-    executar_robo()
+# --- Execução Principal ---
+corpo_email, erro = buscar_dados_opcoes()
+
+if erro:
+    print(f"Erro ao buscar dados: {erro}")
+else:
+    msg = EmailMessage()
+    msg['Subject'] = "OPÇÕES: VENCIMENTO MENSAL PETR4"
+    msg['From'] = "rohsmarcos1003166@gmail.com"
+    msg['To'] = "rohsmarcos1003166@gmail.com"
+    msg.set_content("Erro ao processar dados.")
+    msg.add_alternative(f"<h3>Relatório de Opções</h3>{corpo_email}", subtype='html')
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        # Usa a secret configurada no GitHub
+        smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
+        smtp.send_message(msg)
+    print("E-mail enviado com sucesso!")
