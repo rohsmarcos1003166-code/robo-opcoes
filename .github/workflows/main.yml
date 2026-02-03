@@ -1,4 +1,4 @@
-name: Execucao_Diaria_Opcoes
+name: Execucao_Diaria_Opcoes_VIX
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
   run_script:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do codigo
+      - name: Checkout do código
         uses: actions/checkout@v3
 
       - name: Configurar Python
