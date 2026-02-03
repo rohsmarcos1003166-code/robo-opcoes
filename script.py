@@ -3,76 +3,92 @@ import pandas as pd
 import smtplib
 from email.message import EmailMessage
 import os
-import time
 
-def buscar_dados_com_agressao():
-    """Busca dados e separa o volume entre estimativa de Compra e Venda"""
+def buscar_dados_vix():
+    """Busca as 5 mais negociadas do VIX (EUA)"""
     try:
-        # --- BRASIL (PETR4 como base B3) ---
-        petr = yf.Ticker("PETR4.SA")
-        venc_br = petr.options[0]
-        grade_br = petr.option_chain(venc_br)
-        df_br = pd.concat([grade_br.calls, grade_br.puts])
+        vix = yf.Ticker("^VIX")
+        venc = vix.options[0]
+        grade = vix.option_chain(venc)
+        df = pd.concat([grade.calls, grade.puts])
+        
+        # Lógica de agressão (Baseada na variação de preço)
+        df['Vol Compra'] = df.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
+        df['Vol Venda'] = df.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
+        
+        top5 = df.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol Compra', 'Vol Venda']]
+        top5.columns = ['Ativo', 'Preço', 'Strike', 'Vol Compra', 'Vol Venda']
+        return f"<h3>TOP 5 VIX (EUA) - Venc: {venc}</h3>" + top5.to_html(index=False, border=1)
+    except:
+        return "<h3>TOP 5 VIX (EUA)</h3><p>Dados indisponíveis no momento.</p>"
 
-        if df_br['volume'].sum() <= 0:
-            return None
+def buscar_brasil_opcoes_net():
+    """Varredura Geral B3: Simula a grade do Opções.net.br"""
+    try:
+        # Lista dos ativos com maior liquidez em opções na B3
+        ativos_foco = ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "BBAS3.SA", "ELET3.SA"]
+        consolidado = []
 
-        # Lógica de Agressão: Se 'change' > 0 (Compra), senão (Venda)
-        df_br['Vol_Compra'] = df_br.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
-        df_br['Vol_Venda'] = df_br.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
+        for t in ativos_foco:
+            try:
+                obj = yf.Ticker(t)
+                proximo_vencimento = obj.options[0]
+                grade = obj.option_chain(proximo_vencimento)
+                df_temp = pd.concat([grade.calls, grade.puts])
+                consolidado.append(df_temp)
+            except:
+                continue
 
-        top5_br = df_br.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol_Compra', 'Vol_Venda']]
+        if not consolidado:
+            return "<h3>TOP 5 BRASIL</h3><p>Erro ao acessar dados da B3.</p>"
+
+        # Une todos os ativos em uma única lista para achar o TOP 5 Geral
+        df_geral = pd.concat(consolidado)
+        
+        # Cálculo de Volume Compra vs Venda
+        df_geral['Vol Compra'] = df_geral.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
+        df_geral['Vol Venda'] = df_geral.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
+
+        # Seleciona as 5 campeãs de volume da B3 inteira
+        top5_br = df_geral.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol Compra', 'Vol Venda']]
+        
+        # Limpa o Ticker para o padrão Opções.net.br (ex: PETRB360)
         top5_br['contractSymbol'] = top5_br['contractSymbol'].str.extract(r'([A-Z]{5}\d{1,3})')
         top5_br.columns = ['Ativo', 'Preço', 'Strike', 'Vol Compra', 'Vol Venda']
-        html_br = f"<h3>TOP 5 BRASIL (Opções.net.br/B3) - Venc: {venc_br}</h3>" + top5_br.to_html(index=False, border=1)
+        
+        return "<h3>TOP 5 BRASIL (Grade Geral - Opções.net.br)</h3>" + top5_br.to_html(index=False, border=1)
+    except Exception as e:
+        return f"<h3>TOP 5 BRASIL</h3><p>Erro na varredura: {e}</p>"
 
-        # --- EUA (^VIX) ---
-        vix = yf.Ticker("^VIX")
-        venc_vix = vix.options[0]
-        grade_vix = vix.option_chain(venc_vix)
-        df_vix = pd.concat([grade_vix.calls, grade_vix.puts])
+# --- Montagem e Envio ---
 
-        df_vix['Vol_Compra'] = df_vix.apply(lambda x: x['volume'] if x['change'] >= 0 else 0, axis=1)
-        df_vix['Vol_Venda'] = df_vix.apply(lambda x: x['volume'] if x['change'] < 0 else 0, axis=1)
+html_vix = buscar_dados_vix()
+html_br = buscar_brasil_opcoes_net()
 
-        top5_vix = df_vix.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'Vol_Compra', 'Vol_Venda']]
-        top5_vix.columns = ['Ativo', 'Preço', 'Strike', 'Vol Compra', 'Vol Venda']
-        html_vix = f"<h3>TOP 5 VIX (EUA) - Venc: {venc_vix}</h3>" + top5_vix.to_html(index=False, border=1)
+corpo_email = f"""
+<html>
+<body style="font-family: Arial, sans-serif;">
+    <h2 style="color: #1a5276;">Radar de Opções: Volume de Compra vs Venda</h2>
+    <hr>
+    {html_vix}
+    <br><br>
+    {html_br}
+    <br>
+    <p style="font-size: 10px; color: gray;">Fonte Brasil: Referência Opções.net.br | Dados processados via Yahoo.</p>
+</body>
+</html>
+"""
 
-        return html_vix, html_br
-    except:
-        return None
-
-# --- Lógica de 3 Tentativas ---
-tentativas = 3
-sucesso = False
-h_vix, h_br = "", ""
-
-for i in range(tentativas):
-    print(f"Tentativa {i+1}...")
-    res = buscar_dados_com_agressao()
-    if res:
-        h_vix, h_br = res
-        sucesso = True
-        break
-    time.sleep(300)
-
-if not sucesso:
-    h_vix = "<h3>VIX</h3><p>Erro após 3 tentativas.</p>"
-    h_br = "<h3>BRASIL</h3><p>Erro após 3 tentativas.</p>"
-
-# --- Envio do E-mail ---
-corpo = f"<html><body style='font-family: Arial;'><h2>Relatório de Fluxo de Opções</h2>{h_vix}<br><hr><br>{h_br}</body></html>"
 msg = EmailMessage()
-msg['Subject'] = "FLUXO DE VOLUME: COMPRA vs VENDA"
+msg['Subject'] = "ALERTA: TOP 5 BRASIL & EUA (VOLUME COMPRA/VENDA)"
 msg['From'] = "rohsmarcos1003166@gmail.com"
 msg['To'] = "rohsmarcos1003166@gmail.com"
-msg.add_alternative(corpo, subtype='html')
+msg.add_alternative(corpo_email, subtype='html')
 
 try:
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
         smtp.send_message(msg)
-        print("E-mail enviado com sucesso!")
+        print("Sucesso: E-mail enviado!")
 except Exception as e:
-    print(f"Erro: {e}")
+    print(f"Falha no envio: {e}")
