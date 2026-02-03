@@ -3,69 +3,77 @@ import pandas as pd
 import smtplib
 from email.message import EmailMessage
 import os
-import time
 
-def buscar_dados_consolidado():
-    """Tenta buscar VIX e B3. Retorna os HTMLs se sucesso, ou None se falhar."""
+def buscar_vix_top5():
+    """Busca as 5 maiores (Calls ou Puts) do VIX por volume"""
     try:
-        # 1. Busca VIX (EUA)
         vix = yf.Ticker("^VIX")
-        venc_vix = vix.options[0]
-        grade_vix = vix.option_chain(venc_vix)
-        total_vix = pd.concat([grade_vix.calls, grade_vix.puts])
-        top5_vix = total_vix.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'volume']]
-        top5_vix.columns = ['Ativo', 'Preço', 'Strike', 'Volume']
-        html_vix = f"<h3>TOP 5 VIX (EUA) - Venc: {venc_vix}</h3>" + top5_vix.to_html(index=False, border=1)
-
-        # 2. Busca B3 (Brasil - Padrão Opções.net.br)
-        # Tentamos PETR4 como termômetro da B3
-        petr = yf.Ticker("PETR4.SA")
-        venc_br = petr.options[0]
-        grade_br = petr.option_chain(venc_br)
-        total_br = pd.concat([grade_br.calls, grade_br.puts])
+        vencimento = vix.options[0]
+        grade = vix.option_chain(vencimento)
         
-        # Se o volume total for 0, significa que a API ainda não atualizou
-        if total_br['volume'].sum() <= 0:
-            return None # Força a re-tentativa
-            
-        top5_br = total_br.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'volume']]
-        top5_br['contractSymbol'] = top5_br['contractSymbol'].str.extract(r'([A-Z]{5}\d{1,3})')
-        top5_br.columns = ['Ativo', 'Preço', 'Strike', 'Volume']
-        html_br = f"<h3>TOP 5 BRASIL (Fonte: Opções.net.br) - Venc: {venc_br}</h3>" + top5_br.to_html(index=False, border=1)
-
-        return html_vix, html_br
+        # Junta Calls e Puts em um único DataFrame
+        total = pd.concat([grade.calls, grade.puts])
+        
+        top5 = total.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'volume']]
+        top5.columns = ['Ativo', 'Preço', 'Strike', 'Volume']
+        
+        return f"<h3>TOP 5 VIX (EUA) - Calls & Puts (Venc: {vencimento})</h3>" + top5.to_html(index=False, border=1)
     except:
-        return None
+        return "<h3>TOP 5 VIX (EUA)</h3><p>Erro ao extrair dados.</p>"
 
-# --- Lógica de Tentativas (Loop) ---
-tentativas = 3
-sucesso = False
-html_final_vix = ""
-html_final_br = ""
+def buscar_geral_b3_top5():
+    """Escaneia Calls e Puts dos ativos mais líquidos da B3"""
+    try:
+        # Varredura nos "Blue Chips" da B3
+        principais_ativos = ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "BBAS3.SA"]
+        lista_geral = []
 
-for i in range(tentativas):
-    print(f"Tentativa {i+1} de {tentativas}...")
-    resultado = buscar_dados_consolidado()
-    
-    if resultado:
-        html_final_vix, html_final_br = resultado
-        sucesso = True
-        print("Dados capturados com sucesso!")
-        break # Sai do loop e vai para o envio
-    else:
-        if i < tentativas - 1: # Se não for a última tentativa, espera
-            print("Falha na captura. Aguardando 5 minutos para tentar novamente...")
-            time.sleep(300) # Espera 300 segundos (5 minutos)
+        for ticker in principais_ativos:
+            try:
+                ativo = yf.Ticker(ticker)
+                venc = ativo.options[0]
+                grade = ativo.option_chain(venc)
+                # Adiciona tanto calls quanto puts daquele ativo
+                lista_geral.append(grade.calls)
+                lista_geral.append(grade.puts)
+            except:
+                continue
+        
+        # Consolida tudo (Calls e Puts de todos os ativos)
+        todas_opcoes = pd.concat(lista_geral)
+        
+        # Pega as 5 campeãs de volume do Brasil
+        top5 = todas_opcoes.nlargest(5, 'volume')[['contractSymbol', 'lastPrice', 'strike', 'volume']]
+        
+        # Formatação do nome (Ex: PETRB360 ou PETRN360)
+        top5['contractSymbol'] = top5['contractSymbol'].str.extract(r'([A-Z]{5}\d{1,3})')
+        top5.columns = ['Ativo', 'Preço', 'Strike', 'Volume']
+        
+        return "<h3>TOP 5 BRASIL (Geral B3) - Calls & Puts Mais Ativas</h3>" + top5.to_html(index=False, border=1)
+    except:
+        return "<h3>TOP 5 BRASIL (Geral B3)</h3><p>Dados indisponíveis no momento.</p>"
 
-# Se após 3 tentativas ainda falhar, usamos o Fallback para não ficar sem e-mail
-if not sucesso:
-    html_final_vix = "<h3>VIX (EUA)</h3><p>Indisponível após 3 tentativas.</p>"
-    html_final_br = "<h3>BRASIL (B3)</h3><p>Site Opções.net.br não respondeu. Verifique o fechamento manual.</p>"
+# --- Montagem e Envio ---
+html_vix = buscar_vix_top5()
+html_b3 = buscar_geral_b3_top5()
 
-# --- Envio do E-mail ---
-corpo_email = f"<html><body>{html_final_vix}<br><hr><br>{html_final_br}</body></html>"
+corpo_email = f"""
+<html>
+<body style="font-family: Arial, sans-serif; color: #333;">
+    <h2 style="color: #2c3e50;">Radar de Volume: TOP 5 Opções (Calls e Puts)</h2>
+    <p>Este relatório identifica onde está o maior dinheiro do mercado agora.</p>
+    <hr>
+    {html_vix}
+    <br><br>
+    {html_b3}
+    <br>
+    <p style="font-size: 11px; color: gray;">Fonte: B3 / Yahoo Finance / Opções.net.br</p>
+</body>
+</html>
+"""
+
 msg = EmailMessage()
-msg['Subject'] = "RELATÓRIO FINAL: TOP 5 OPÇÕES"
+msg['Subject'] = "ALERTA: TOP 5 GERAL (CALLS & PUTS)"
 msg['From'] = "rohsmarcos1003166@gmail.com"
 msg['To'] = "rohsmarcos1003166@gmail.com"
 msg.add_alternative(corpo_email, subtype='html')
@@ -74,6 +82,6 @@ try:
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(msg['From'], os.environ.get('EMAIL_PASSWORD'))
         smtp.send_message(msg)
-        print("E-mail enviado!")
+        print("Radar de Calls e Puts enviado!")
 except Exception as e:
     print(f"Erro no envio: {e}")
