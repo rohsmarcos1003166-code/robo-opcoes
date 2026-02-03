@@ -4,51 +4,59 @@ import smtplib
 from email.message import EmailMessage
 import os
 
-def buscar_dados(ticker_nome):
-    print(f"Tentando extrair dados para {ticker_nome}...")
+def buscar_dados_vix():
+    print("Iniciando extração de dados do VIX...")
     try:
-        ativo = yf.Ticker(ticker_nome)
-        vencimentos = ativo.options
+        # O ticker para o índice VIX no Yahoo Finance é ^VIX
+        vix = yf.Ticker("^VIX")
+        
+        # Obtém as datas de vencimento de opções disponíveis
+        vencimentos = vix.options
         
         if not vencimentos:
-            print(f"Aviso: Sem opções para {ticker_nome} no momento.")
+            print("Aviso: Nenhuma opção encontrada para ^VIX no momento.")
             return None
         
-        # Pega o vencimento mais próximo
-        proximo_vencimento = vencimentos[0]
-        opcoes = ativo.option_chain(proximo_vencimento)
-        df = opcoes.calls[['lastPrice', 'strike', 'percentChange']].head(10)
+        # Pega o primeiro vencimento disponível
+        data_vencimento = vencimentos[0]
+        opcoes = vix.option_chain(data_vencimento)
         
-        return f"<h3>Ativo: {ticker_nome} (Vencimento: {proximo_vencimento})</h3>" + df.to_html(index=False)
+        # Seleciona as CALLS e as colunas principais
+        df_calls = opcoes.calls[['lastPrice', 'strike', 'volume', 'openInterest']].head(15)
+        
+        html = f"""
+        <html>
+            <body>
+                <h2>Relatório de Opções - Mercado Americano (VIX)</h2>
+                <p><b>Ativo:</b> ^VIX (CBOE Volatility Index)</p>
+                <p><b>Vencimento Selecionado:</b> {data_vencimento}</p>
+                {df_calls.to_html(index=False)}
+                <p><i>Dados extraídos via Yahoo Finance.</i></p>
+            </body>
+        </html>
+        """
+        return html
     except Exception as e:
-        print(f"Erro técnico no yfinance: {e}")
+        print(f"Erro ao buscar dados do VIX: {e}")
         return None
 
-# --- Fluxo Principal ---
-# 1. Tenta Petrobras
-corpo_html = buscar_dados("PETR4.SA")
+# --- Fluxo de Envio ---
+corpo_email = buscar_dados_vix()
 
-# 2. Se falhar, tenta Vale (Teste de Sanidade)
-if corpo_html is None:
-    print("Iniciando teste alternativo com VALE3.SA...")
-    corpo_html = buscar_dados("VALE3.SA")
-
-# 3. Envio do E-mail (Se houver algum dado)
-if corpo_html:
+if corpo_email:
     msg = EmailMessage()
-    msg['Subject'] = "RELATÓRIO DE OPÇÕES - TESTE"
+    msg['Subject'] = "OPÇÕES VIX: MERCADO AMERICANO"
     msg['From'] = "rohsmarcos1003166@gmail.com"
     msg['To'] = "rohsmarcos1003166@gmail.com"
-    msg.add_alternative(f"<html><body>{corpo_html}</body></html>", subtype='html')
+    msg.add_alternative(corpo_email, subtype='html')
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            # Pega a senha das Secrets do GitHub
             senha = os.environ.get('EMAIL_PASSWORD')
             smtp.login(msg['From'], senha)
             smtp.send_message(msg)
-            print("E-mail enviado com sucesso!")
+            print("Sucesso: E-mail com dados do VIX enviado!")
     except Exception as e:
         print(f"Erro no envio do e-mail: {e}")
 else:
-    print("Nenhum dado extraído. O e-mail não foi enviado para evitar mensagens vazias.")
+    print("Falha na extração. O e-mail não foi enviado.")
