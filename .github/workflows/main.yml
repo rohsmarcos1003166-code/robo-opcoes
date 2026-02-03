@@ -1,9 +1,9 @@
-name: Execucao_Diaria_Opcoes_VIX
+name: Relatorio_Hibrido_Opcoes
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # Executa às 19h de Brasília
+    - cron: '0 22 * * *' # 19h Brasília
 
 jobs:
   run_script:
@@ -20,7 +20,7 @@ jobs:
       - name: Instalar bibliotecas
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas --upgrade
+          pip install yfinance pandas requests --upgrade
 
       - name: Executar Robo
         env:
