@@ -1,4 +1,4 @@
-name: Relatorio_Top5_Opcoes_Brasil_EUA
+name: Relatorio_Hibrido_VIX_e_B3
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
       - name: Instalar bibliotecas
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas requests --upgrade
+          pip install yfinance pandas requests lxml --upgrade
 
       - name: Executar Robo
         env:
